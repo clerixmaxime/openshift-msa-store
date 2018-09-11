@@ -37,9 +37,42 @@ spec:
             openshiftTag(namespace: 'msa-store-dev', sourceStream:'inventory-service', sourceTag:'latest', destinationStream:'inventory-service', destinationTag:'promoteToProd')
           }
           stage ('Deploy Prod') {
-            openshiftDeploy(namespace: 'msa-store-prod', depCfg:  'inventory-service')
+            sh "oc project msa-store-prod"
+            sh "oc get service inventory-service -n msa-store-prod -o template --template='{{ .spec.selector.color }}' > route-target"
+            def newTarget = getNewTarget()
+            openshiftDeploy(namespace: 'msa-store-prod', depCfg:  "inventory-service-${newTarget}")
+          }
+          stage ('Go live?') {
+
+            def newTarget = getNewTarget()
+            def currentTarget = getCurrentTarget()
+
+            input "Switch Production from ${currentTarget} to ${newTarget} ?"
+
+            sh "oc patch -n msa-store-prod service/inventory-service --patch '{\"spec\":{\"selector\":{\"color\":\"${newTarget}\"}}}'"
+
           }
         }
+
+        def getCurrentTarget() {
+          def currentTarget = readFile 'route-target'
+          return currentTarget
+        }
+
+        // Flip/flop target (green goes blue and vice versa)
+        def getNewTarget() {
+          def currentTarget = getCurrentTarget()
+          def newTarget = ""
+          if (currentTarget == "blue") {
+              newTarget = "green"
+          } else if (currentTarget == "green") {
+              newTarget = "blue"
+          } else {
+            echo "OOPS, wrong target"
+          }
+          return newTarget
+        }
+
   output:
   resources:
   postCommit:

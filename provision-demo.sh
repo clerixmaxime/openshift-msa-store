@@ -334,8 +334,14 @@ function provision_msa_store_prod() {
   oc create deploymentconfig order-service --image=docker-registry.default.svc:5000/msa-store-dev/order-service:promoteToProd -n msa-store-prod
   oc set env dc/order-service ACTIVEMQ_SERVICE_NAME=broker-amq-tcp JAEGER_SERVER_HOSTNAME=jaeger-agent.cockpit.svc.cluster.local JAVA_OPTIONS=-javaagent:agent/jmx_prometheus_javaagent-0.10.jar=9779:agent/config.yml JAVA_APP_DIR=/deployments -n msa-store-prod
 
-  oc create deploymentconfig inventory-service --image=docker-registry.default.svc:5000/msa-store-dev/inventory-service:promoteToProd -n msa-store-prod
-  oc set env dc/inventory-service PORT=8080 JAEGER_SERVER_HOSTNAME=jaeger-agent.cockpit.svc.cluster.local
+  # blue
+  oc create deploymentconfig inventory-service-blue --image=docker-registry.default.svc:5000/msa-store-dev/inventory-service:promoteToProd -n msa-store-prod
+  oc set env dc/inventory-service-blue PORT=8080 JAEGER_SERVER_HOSTNAME=jaeger-agent.cockpit.svc.cluster.local
+  oc label dc inventory-service-blue color=blue
+  # green
+  oc create deploymentconfig inventory-service-green --image=docker-registry.default.svc:5000/msa-store-dev/inventory-service:promoteToProd -n msa-store-prod
+  oc set env dc/inventory-service-green PORT=8080 JAEGER_SERVER_HOSTNAME=jaeger-agent.cockpit.svc.cluster.local
+  oc label dc inventory-service-green color=green
 
   oc create deploymentconfig shipping-service --image=docker-registry.default.svc:5000/msa-store-dev/shipping-service:promoteToProd -n msa-store-prod
   oc set env dc/shipping-service ACTIVEMQ_SERVICE_NAME=broker-amq-tcp JAEGER_SERVER_HOSTNAME=jaeger-agent.cockpit.svc.cluster.local JAVA_OPTIONS=-javaagent:agent/jmx_prometheus_javaagent-0.10.jar=9779:agent/config.yml JAVA_APP_DIR=/deployments -n msa-store-prod
@@ -343,22 +349,30 @@ function provision_msa_store_prod() {
   oc create deploymentconfig shop-ui --image=docker-registry.default.svc:5000/msa-store-dev/shop-ui:promoteToProd -n msa-store-prod
 
   oc rollout cancel dc/order-service -n msa-store-prod
-  oc rollout cancel dc/inventory-service -n msa-store-prod
+  oc rollout cancel dc/inventory-service-blue -n msa-store-prod
+  oc rollout cancel dc/inventory-service-green -n msa-store-prod
   oc rollout cancel dc/shipping-service -n msa-store-prod
   oc rollout cancel dc/shop-ui -n msa-store-prod
 
   oc get dc order-service -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
-  oc get dc inventory-service -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
+  oc get dc inventory-service-blue -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
+  oc get dc inventory-service-green -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
   oc get dc shipping-service -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
   oc get dc shop-ui -o json -n msa-store-prod | jq '.spec.triggers |= []' | oc replace -f -
 
+  oc patch dc inventory-service-blue -p '{"spec":{"template":{"metadata":{"labels":{"color":"blue"}}}}}' -n msa-store-prod
+  oc patch dc inventory-service-green -p '{"spec":{"template":{"metadata":{"labels":{"color":"green"}}}}}' -n msa-store-prod
+
   oc get dc order-service -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
-  oc get dc inventory-service -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
+  oc get dc inventory-service-blue -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
+  oc get dc inventory-service-green -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
   oc get dc shipping-service -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
   oc get dc shop-ui -o yaml -n msa-store-prod | sed 's/imagePullPolicy: IfNotPresent/imagePullPolicy: Always/g' | oc replace -f -
 
   oc expose dc order-service --port=80 --target-port=8181 -n msa-store-prod
-  oc expose dc inventory-service --port=8080 -n msa-store-prod
+  oc expose dc inventory-service-blue --port=8080 --selector="color=blue" -n msa-store-prod
+  oc expose dc inventory-service-green --port=8080 --selector="color=green" -n msa-store-prod
+  oc expose dc inventory-service-blue --name="inventory-service" --port=8080 --selector="color=blue" -n msa-store-prod
   oc expose dc shipping-service --port=80 --target-port=8080 -n msa-store-prod
   oc expose dc shop-ui --port=8080 -n msa-store-prod
 
@@ -375,7 +389,8 @@ function provision_msa_store_tag() {
   oc tag msa-store-dev/shop-ui:latest msa-store-dev/shop-ui:promoteToProd
 
   oc rollout latest dc/order-service -n msa-store-prod
-  oc rollout latest dc/inventory-service -n msa-store-prod
+  oc rollout latest dc/inventory-service-blue -n msa-store-prod
+  oc rollout latest dc/inventory-service-green -n msa-store-prod
   oc rollout latest dc/shipping-service -n msa-store-prod
   oc rollout latest dc/shop-ui -n msa-store-prod
 
